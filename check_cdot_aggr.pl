@@ -106,7 +106,8 @@ while(defined( $next )){
         my $aggr_name = $aggr->child_get_string( "aggregate-name" );
 
         # exclude root aggregates
-        unless($aggr_name =~ m/^aggr0_/) {
+        #unless($aggr_name =~ m/^aggr0_/) {
+        unless($aggr_name =~ m/root/) {
 
             next if exists $Excludelist{$aggr_name};
 
