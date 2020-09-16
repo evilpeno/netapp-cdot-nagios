@@ -2,7 +2,7 @@
 
 # nagios: -epn
 # --
-# check_cdot_metrocluster_aggr - Check Metrocluster Aggregate state
+# check_cdot_storage_bridge - Check Storage Bridge state
 # Copyright (C) 2018 noris network AG, http://www.noris.net/
 # --
 # This software comes with ABSOLUTELY NO WARRANTY. For details, see
@@ -26,9 +26,7 @@ GetOptions(
     'h|help'     => sub { exec perldoc => -F => $0 or die "Cannot execute perldoc: $!\n"; },
 ) or Error("$0: Error in command line arguments\n");
 
-my @mirroring_status;
-my @disk_pool_allocation;
-my @ownership_state;
+my @broken_bridge;
 
 sub Error {
     print "$0: " . $_[0] . "\n";
@@ -44,20 +42,18 @@ $s->set_transport_type("HTTPS");
 $s->set_style("LOGIN");
 $s->set_admin_user( $Username, $Password );
 
-my $api = new NaElement('metrocluster-check-aggregate-get-iter');
+my $api = new NaElement('storage-bridge-get-iter');
 my $tag_elem = NaElement->new("tag");
 $api->child_add($tag_elem);
 
 my $xi = new NaElement('desired-attributes');
 $api->child_add($xi);
 
-my $xi1 = new NaElement('metrocluster-check-aggregate-info');
+my $xi1 = new NaElement('storage-bridge-info');
 $xi->child_add($xi1);
 
-$xi1->child_add_string('additional-info','<additional-info>');
-$xi1->child_add_string('aggregate','<aggregate>');
-$xi1->child_add_string('check','<check>');
-$xi1->child_add_string('result','<result>');
+$xi1->child_add_string('name','<name>');
+$xi1->child_add_string('status','<status>');
 
 my $next = "";
 
@@ -78,48 +74,31 @@ while(defined($next)){
     my $aggrs = $output->child_get("attributes-list");
     my @result = $aggrs->children_get();
 
-    foreach my $aggr (@result){
+    foreach my $bridge (@result){
 
-        my $aggr_name = $aggr->child_get_string("aggregate");
-        my $check = $aggr->child_get_string("check");
-        my $check_result = $aggr->child_get_string("result");
+        my $name = $bridge->child_get_string("name");
+        my $status = $bridge->child_get_string("status");
 
-        unless($check_result eq "ok"){
-
-            if($check eq "mirroring_status"){
-                push(@mirroring_status, $aggr_name);
-            } elsif($check eq "disk_pool_allocation"){
-                push(@disk_pool_allocation, $aggr_name);
-            } elsif($check eq "ownership_state"){
-                push(@ownership_state, $aggr_name);
-            }
+        unless($status eq "ok"){
+            push(@broken_bridge, $name);
         }
     }
 
     $next = $output->child_get_string("next-tag");
+
 }
 
+my $count = scalar(@broken_bridge);
 
-if($#mirroring_status > 0){
-    print "CRITICAL: mirroring status:\n";
-    print join(", ",@mirroring_status);
-    print "\n";
-    exit 2;
-} elsif($#disk_pool_allocation >0){
-    print "CRITICAL: disk pool allocation:\n";
-    print join(", ",@disk_pool_allocation);
-    print "\n";
-    exit 2;
-} elsif($#ownership_state > 0){
-    print "CRITICAL: ownership state::\n";
-    print join(", ",@ownership_state);
+if($count > 0){
+    print "CRITICAL: $count bridge error(s):\n";
+    print join(", ",@broken_bridge);
     print "\n";
     exit 2;
 } else {
-    print "OK: all aggregates mirrored\n";
+    print "OK: all bridge ok\n";
     exit 0;
 }
-
 
 __END__
 
@@ -127,16 +106,16 @@ __END__
 
 =head1 NAME
 
-check_cdot_metrocluster_aggr - Check Metrocluster Aggregate
+check_cdot_storage_bridge - Check Storage Bridge
 
 =head1 SYNOPSIS
 
-check_cdot_aggr.pl -H HOSTNAME -u USERNAME \
+check_cdot_storage_bridge.pl -H HOSTNAME -u USERNAME \
            -p PASSWORD 
 
 =head1 DESCRIPTION
 
-Checks the Metrocluster Aggregate Status of the NetApp System and warns
+Checks the Storage Bridge Status of the NetApp System and warns
 if anything is not 'ok'
 
 =head1 OPTIONS
@@ -166,7 +145,7 @@ to see this Documentation
 =head1 EXIT CODE
 
 3 on Unknown Error
-2 if any aggregat isn't ok
+2 if any bridge isn't ok
 0 if everything is ok
 
 =head1 AUTHORS

@@ -27,8 +27,18 @@ GetOptions(
     'volume=s'   => \my $Volume,
     'vserver=s'	 => \my $Vserver,
     'perf'     => \my $perf,
+    'excludevserver=s'  =>  \my @excludevserverlistarray,
+    'excludelun=s' => \my @excludelunlistarray,
     'help|?'     => sub { exec perldoc => -F => $0 or die "Cannot execute perldoc: $!\n"; },
 ) or Error("$0: Error in command line arguments\n");
+
+my %Excludevserverlist;
+@Excludevserverlist{@excludevserverlistarray}=();
+my $excludevserverliststr = join "|", @excludevserverlistarray;
+
+my %Excludelunlist;
+@Excludelunlist{@excludelunlistarray}=();
+my $excludelunliststr = join "|", @excludelunlistarray;
 
 sub Error {
     print "$0: " . $_[0] . "\n";
@@ -59,9 +69,11 @@ $xi->child_add($xi1);
 $xi1->child_add_string('online','<online>');
 $xi1->child_add_string('path','<path>');
 $xi1->child_add_string('size','<size>');
+
 $xi1->child_add_string('size-used','<size-used>');
 $xi1->child_add_string('state','<state>');
 $xi1->child_add_string('volume','<volume>');
+$xi1->child_add_string('vserver','<vserver');
 my $xi2 = new NaElement('query');
 $iterator->child_add($xi2);
 my $xi3 = new NaElement('lun-info');
@@ -88,9 +100,9 @@ while(defined($next)){
 	}
 
 	my $luns_all = $output->child_get("attributes-list");
+
 	unless($output->child_get_int('num-records') != 0) {
-		print "CRITICAL: no volume matching this name\n"; 
-		exit 2;
+        last;
 	}
 
 	my @result = $luns_all->children_get();
@@ -101,8 +113,21 @@ while(defined($next)){
 
 		if ($lun_info) {
 			my $lun_path = $lun_info->child_get_string("path");
+            my $vserver = $lun_info->child_get_string("vserver");
 
-			my $space_used = $lun_info->child_get_int("size-used");
+            if(@excludevserverlistarray){
+                if ($vserver =~ m/$excludevserverliststr/) {
+                    next;
+                }
+            }
+
+            if(@excludelunlistarray){
+                if ($lun_path =~ m/$excludelunliststr/) {
+                    next;
+                }
+            }
+	
+            my $space_used = $lun_info->child_get_int("size-used");
 			my $space_total = $lun_info->child_get_int("size");
 			
 			my $space_percent = sprintf ("%.3f", $space_used/$space_total*100);
@@ -141,20 +166,20 @@ while(defined($next)){
 if($crit_msg){
     print "CRITICAL: $crit_msg\n";
     if($warn_msg){
-        print "WARNING: $warn_msg\n";
+        print "\nWARNING: $warn_msg\n";
     }
     if($ok_msg){
-        print "OK: $ok_msg\n";
+        print "\nOK: $ok_msg\n";
     }
     exit 2;
 } elsif($warn_msg){
-    print "WARNING: $warn_msg\n";
+    print "\nWARNING: $warn_msg\n";
     if($ok_msg){
-        print "OK: $ok_msg\n";
+        print "\nOK: $ok_msg\n";
     }
     exit 1;
 } elsif($ok_msg){
-    print "OK: $ok_msg\n";
+    print "\nOK: $ok_msg\n";
     exit 0;
 } else {
     print "WARNING: no online volume found\n";
@@ -186,7 +211,7 @@ if warning or critical Thresholds are reached
 
 =item --hostname FQDN
 
-The Hostname of the NetApp to monitor
+The Hostname of the NetApp to monitor (Cluster or Node MGMT)
 
 =item --username USERNAME
 
@@ -211,6 +236,9 @@ Optional: The name of the Volume where the Luns that need to be checked are loca
 =item --vserver VSERVER
 
 Optional: The name of the Vserver where the Luns that need to be checked are located
+
+=item --excludevserver
+Optional: The name of a vserver that has to be excluded from the checks (multiple exclude item for multiple volumes)
 
 =item --perf
 

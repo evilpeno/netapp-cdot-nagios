@@ -47,6 +47,11 @@ $s->set_admin_user( $Username, $Password );
 my $mcc_iterator = NaElement->new( "metrocluster-get" );
 my $mcc_response = $s->invoke_elem( $mcc_iterator );
 
+if($mcc_response->results_status ne "passed"){
+    print "ERROR: " . $mcc_response->results_reason . "\n";
+    exit 2;
+}
+
 my $mcc = $mcc_response->child_get( "attributes" );
 my $mcc_info = $mcc->child_get( "metrocluster-info" );
 my $config_state = $mcc_info->child_get_string( "local-configuration-state" );
@@ -64,6 +69,27 @@ if($config_state eq "configured") {
     }
 } else {
     $must_paths = 4;
+}
+
+my $shelf_iterator = NaElement->new("storage-shelf-info-get-iter");
+$shelf_iterator->child_add_string("max-records", "1000");
+my $shelf_response = $s->invoke_elem( $shelf_iterator );
+my $shelfs = $shelf_response->child_get("attributes-list");
+
+my @result = $shelfs->children_get();
+
+my %shelfs;
+
+foreach my $shelf (@result) {
+
+    my $type = $shelf->child_get_string("module-type");
+    my $stack = $shelf->child_get_string("stack-id");
+    my $shelf_id = $shelf->child_get_string("shelf-id");
+    
+    my $shelf_name = "$stack.$shelf_id";
+
+    $shelfs{$shelf_name} = $type;
+
 }
 
 my $iterator = NaElement->new( "storage-disk-get-iter" );
@@ -94,21 +120,28 @@ while(defined( $next )){
 
         foreach my $disk (@result) {
 
+            my $inventory = $disk->child_get("disk-inventory-info");
             my $paths = $disk->child_get( "disk-paths" );
             my $path_count = $paths->children_get( "disk-path-info" );
             my $disk_name = $disk->child_get_string( "disk-name" );
             my $path_info = $paths->child_get( "disk-path-info" );
 
-            foreach my $path ($path_info) {
+            my $shelf = $inventory->child_get_string("shelf");
+            my $stack_id = $inventory->child_get_string("stack-id");
 
-                my $disk_path_name = $path->child_get_string( "disk-name" );
-                my @split = split( /:/, $disk_path_name );
+            my $iom_type = $shelfs{"$stack_id.$shelf"};
 
-                if((@split eq 2) && ($path_count ne $must_paths)){
-                    unless($path_count > $must_paths){
-                        push @failed_disks, $disk_name;
-                    }
-                }
+            my $new_must_paths;
+
+            # Internal disks i.e. A700s have 8 paths
+            if($iom_type eq "iom12f"){
+                $new_must_paths = "8";
+            } else {
+                $new_must_paths = $must_paths;
+            }
+
+            unless($path_count eq $new_must_paths){
+                push @failed_disks, $disk_name;
             }
         }
     }
@@ -146,7 +179,7 @@ Checks if all Disks are multipathed (4 paths)
 
 =item --hostname FQDN
 
-The Hostname of the NetApp to monitor
+The Hostname of the NetApp to monitor (Cluster or Node MGMT)
 
 =item --username USERNAME
 

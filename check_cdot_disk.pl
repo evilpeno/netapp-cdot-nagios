@@ -112,9 +112,11 @@ while(defined( $next )){
                 }
             } else {
                 my $owner = $disk->child_get( "disk-ownership-info" );
+                my $owner_node = $owner->child_get_string("owner-node-name");
+
                 my $diskstate = $owner->child_get_string( "is-failed" );
                 if (( $diskstate eq 'true' ) && ($container ne 'maintenance')) {
-                    push @disk_list, $disk->child_get_string( "disk-name" );
+                    push @disk_list, "$owner_node:" . $disk->child_get_string( "disk-name" );
                     $inventory{'Failed'}++;
                 } else {
                     $inventory{'Aggregate'}++;
@@ -127,7 +129,7 @@ while(defined( $next )){
 }
 
 my $perfdatastr='';
-$perfdatastr = sprintf(" | Aggregate=%dDisks Spare=%dDisks Rebuilding=%dDisks Failed=%dDisks",
+$perfdatastr = sprintf(" | Aggregate=%d Spare=%d Rebuilding=%d Failed=%d",
     $inventory{'Aggregate'}, $inventory{'Spare'}, $inventory{'Rebuilding'}, $inventory{'Failed'}
 ) if ($perf);
 
@@ -168,7 +170,7 @@ Checks if there are some damaged disks.
 
 =item -H | --hostname FQDN
 
-The Hostname of the NetApp to monitor
+The Hostname of the NetApp to monitor (Cluster or Node MGMT)
 
 =item -u | --username USERNAME
 

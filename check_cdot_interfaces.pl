@@ -101,6 +101,10 @@ foreach my $head (@result) {
 
 my %failed_ports;
 
+my %failed_speed;
+my $failed_speed_count = 0;
+
+
 my $iterator = NaElement->new( "net-port-get-iter" );
 my $tag_elem = NaElement->new( "tag" );
 $iterator->child_add( $tag_elem );
@@ -126,13 +130,26 @@ while(defined( $next )){
     if($lifs) {
 
         my @lif_result = $lifs->children_get();
-    
+        
         foreach my $lif (@lif_result) {
   
             my $node = $lif->child_get_string( "node" );
             my $name = $lif->child_get_string( "port" );
             my $state = $lif->child_get_string( "link-status" );
-  
+            my $admin_speed = $lif->child_get_string( "administrative-speed" );
+            my $operational_speed = $lif->child_get_string( "operational-speed" );
+
+            if($state eq "up"){
+                unless(($name =~ m/^a0/) || ($name =~ m/^e0M/)){ 
+
+                    if(($admin_speed ne "auto") && ($admin_speed ne $operational_speed)){
+                        push( @{$failed_speed{$node}}, $name);
+                        $failed_speed_count++;
+                    }
+                }
+
+            }
+
             if($state ne "up") {
                 push( @{$failed_ports{$node}}, $name);
             }
@@ -223,15 +240,30 @@ if($nics) {
 
 if(@failed_ports && @nic_errors) {
     print "CRITICAL: ";
-    print @failed_ports;
+    print join(", ", @failed_ports);
     print " in ifgrp and not up\n";
-    print join(" ", @nic_errors);
+    print join(", ", @nic_errors);
     print " with CRC errors\n";
     exit 2;
 } elsif(@failed_ports){
     print "CRITICAL: ";
-    print @failed_ports;
+    print join(", ", @failed_ports);
     print " in ifgrp and not up\n";
+    exit 2;
+} elsif($failed_speed_count ne 0){
+    print "CRITICAL: $failed_speed_count ports speed mismatch: ";
+    foreach my $node (keys %failed_speed){
+
+        print $node . ": ";
+
+        my $ports = $failed_speed{$node};
+
+        foreach my $port (@$ports){
+            print $port . ", ";
+        }
+
+    }
+    print "\n";
     exit 2;
 } elsif(@nic_errors){
     print "CRITICAL: ";
@@ -266,7 +298,7 @@ Checks if all Interface Groups have every single link up
 
 =item --hostname FQDN
 
-The Hostname of the NetApp to monitor
+The Hostname of the NetApp to monitor (Cluster or Node MGMT)
 
 =item --username USERNAME
 
